@@ -1,6 +1,6 @@
 const feathers = require('@feathersjs/feathers');
-const app = feathers();
-
+const express = require('@feathersjs/express');
+const socketio = require('@feathersjs/socketio');
 
 // A message service that allows us to create new messages and return all 
 // existing messages.
@@ -29,29 +29,40 @@ class MessageService {
   }
 }
 
-// Register the message service on the Feathers application
-app.use('messages', new MessageService());
+// Creates an ExpressJS compatiable Feathers app
+const app = express(feathers());
 
-// Log every time a new message is created
-app.service('messages').on('created', message => { 
-  console.log('A new message has been created', message);
+// Parse HTTP JSON bodies
+app.use(express.json());
+
+// Parse URL-encoded parameters
+app.use(express.urlencoded({ extended: true }));
+
+// Host static files from the current folder/directory
+app.use(express.static(__dirname));
+
+// Add REST API support
+app.configure(express.rest());
+
+// Configure Socket.io real-time APIs
+app.configure(socketio());
+
+// Register an in-memory message service
+app.use('/messages', new MessageService());
+
+// Register a better error handler than the default Express handler
+app.use(express.errorHandler());
+
+// Add any new real-time connections to the 'everybody' channel
+app.on('connection', connection => app.channel('everbody').join(connection));
+
+// Puyblish all events to the 'everbody' channel
+app.publish(data => app.channel('everybody'));
+
+// Start the server
+app.listen(3030).on('listening', () => console.log('Feathers server listening on port 3030'));
+
+// Create a sample, default message to populate the initial state of the service
+app.service('messages').create({
+  text: 'Hell world, from the new server!'
 });
-
-// A function that creates new messages and then logs all existing messages
-const main = async () => {
-  // Create a new message on our message service
-  await app.service('messages').create({
-    text: 'Hello Feathers'
-  });
-
-  await app.service('messages').create({
-    text: 'Hello again'
-  });
-
-  // Find all existing messages
-  const messages = await app.service('messages').find();
-
-  console.log('All messages', messages);
-};
-
-main();
